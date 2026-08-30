@@ -1,0 +1,274 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==============================================
+// ENUMS
+// ==============================================
+enum ProjectMemberRole {
+  OWNER
+  MEMBER
+
+  @@map("project_member_role")
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@map("task_priority")
+}
+
+enum ActivityAction {
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_MOVED
+  TASK_ASSIGNED
+  TASK_UNASSIGNED
+  COMMENT_ADDED
+  MEMBER_ADDED
+  MEMBER_REMOVED
+
+  @@map("activity_action")
+}
+
+// ==============================================
+// MODELS
+// ==============================================
+
+// 1. Users
+model User {
+  id           BigInt   @id @default(autoincrement())
+  username     String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  avatarUrl    String?  @map("avatar_url") @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  refreshTokens   RefreshToken[]
+  createdProjects Project[]       @relation("ProjectCreator")
+  projectMembers  ProjectMember[]
+  createdBoards   Board[]         @relation("BoardCreator")
+  createdTasks    Task[]          @relation("TaskCreator")
+  assignedTasks   TaskAssignee[]
+  comments        Comment[]
+  activities      Activity[]
+
+  @@map("users")
+}
+
+// 2. Refresh Tokens
+model RefreshToken {
+  id        BigInt    @id @default(autoincrement())
+  userId    BigInt    @map("user_id")
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// 3. Projects
+model Project {
+  id          BigInt   @id @default(autoincrement())
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  createdBy   BigInt   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  creator    User            @relation("ProjectCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  members    ProjectMember[]
+  boards     Board[]
+  labels     Label[]
+  activities Activity[]
+
+  @@index([createdBy])
+  @@map("projects")
+}
+
+// 4. Project Members
+model ProjectMember {
+  projectId BigInt            @map("project_id")
+  userId    BigInt            @map("user_id")
+  role      ProjectMemberRole
+  joinedAt  DateTime          @default(now()) @map("joined_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+// 5. Boards
+model Board {
+  id          BigInt   @id @default(autoincrement())
+  projectId   BigInt   @map("project_id")
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  createdBy   BigInt   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator User     @relation("BoardCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  columns Column[]
+
+  @@index([projectId])
+  @@index([createdBy])
+  @@map("boards")
+}
+
+// 6. Columns
+model Column {
+  id        BigInt   @id @default(autoincrement())
+  boardId   BigInt   @map("board_id")
+  name      String   @db.VarChar(100)
+  position  Decimal  @db.Decimal(20, 10)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([boardId])
+  @@index([boardId, position])
+  @@map("columns")
+}
+
+// 7. Tasks
+model Task {
+  id          BigInt       @id @default(autoincrement())
+  columnId    BigInt       @map("column_id")
+  title       String       @db.VarChar(255)
+  description String?      @db.Text
+  position    Decimal      @db.Decimal(20, 10)
+  priority    TaskPriority
+  dueDate     DateTime?    @map("due_date")
+  createdBy   BigInt       @map("created_by")
+  version     Int          @default(1)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt   @map("updated_at")
+
+  // Relations
+  column     Column         @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  creator    User           @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  assignees  TaskAssignee[]
+  taskLabels TaskLabel[]
+  comments   Comment[]
+  activities Activity[]
+
+  @@index([columnId])
+  @@index([createdBy])
+  @@index([columnId, position])
+  @@map("tasks")
+}
+
+// 8. Task Assignees
+model TaskAssignee {
+  taskId     BigInt   @map("task_id")
+  userId     BigInt   @map("user_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  // Relations
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+  @@map("task_assignees")
+}
+
+// 9. Labels
+model Label {
+  id        BigInt   @id @default(autoincrement())
+  projectId BigInt   @map("project_id")
+  name      String   @db.VarChar(50)
+  color     String   @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskLabels TaskLabel[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@map("labels")
+}
+
+// 10. Task Labels
+model TaskLabel {
+  taskId  BigInt @map("task_id")
+  labelId BigInt @map("label_id")
+
+  // Relations
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
+  @@map("task_labels")
+}
+
+// 11. Comments
+model Comment {
+  id        BigInt   @id @default(autoincrement())
+  taskId    BigInt   @map("task_id")
+  userId    BigInt   @map("user_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId])
+  @@map("comments")
+}
+
+// 12. Activities
+model Activity {
+  id        BigInt         @id @default(autoincrement())
+  projectId BigInt         @map("project_id")
+  taskId    BigInt?        @map("task_id")
+  userId    BigInt         @map("user_id")
+  action    ActivityAction
+  oldValue  String?        @map("old_value") @db.Text
+  newValue  String?        @map("new_value") @db.Text
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([taskId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("activities")
+}
+
