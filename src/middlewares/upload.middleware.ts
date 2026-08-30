@@ -1,11 +1,14 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { Request } from 'express';
 import { AppError } from '../utils/app-error';
 
-// Base directory for uploaded files
-const UPLOADS_ROOT = path.join(process.cwd(), 'uploads');
+// Base directory for uploaded files (use /tmp on Vercel / Serverless)
+const UPLOADS_ROOT = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'uploads')
+  : path.join(process.cwd(), 'uploads');
 
 /**
  * Creates a Multer upload instance for a specific sub-folder
@@ -15,13 +18,25 @@ const UPLOADS_ROOT = path.join(process.cwd(), 'uploads');
 export const createUploader = (subFolder: string = 'general', maxSizeInMB: number = 5) => {
   const destinationDir = path.join(UPLOADS_ROOT, subFolder);
 
-  // Ensure directory exists
-  if (!fs.existsSync(destinationDir)) {
-    fs.mkdirSync(destinationDir, { recursive: true });
+  // Ensure directory exists safely
+  try {
+    if (!fs.existsSync(destinationDir)) {
+      fs.mkdirSync(destinationDir, { recursive: true });
+    }
+  } catch (err) {
+    console.warn(`[UploadMiddleware] Warning: Could not create upload directory ${destinationDir}:`, err);
   }
 
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
+      // Ensure directory exists at upload time as well
+      try {
+        if (!fs.existsSync(destinationDir)) {
+          fs.mkdirSync(destinationDir, { recursive: true });
+        }
+      } catch (err) {
+        // Ignore if fails
+      }
       cb(null, destinationDir);
     },
     filename: (req, file, cb) => {
@@ -91,4 +106,3 @@ export const removeLocalFile = (relativeFilePath?: string | null): void => {
     }
   }
 };
-
