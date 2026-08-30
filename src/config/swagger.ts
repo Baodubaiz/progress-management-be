@@ -122,26 +122,30 @@ const swaggerOptions: swaggerJsDoc.Options = {
   ],
 };
 
-const swaggerSpec = swaggerJsDoc(swaggerOptions);
-
 export const setupSwagger = (app: Application): void => {
-  // Swagger UI page
-  app.use(
-    '/api-docs',
-    swaggerUi.serve,
-    swaggerUi.setup(swaggerSpec, {
-      customSiteTitle: 'Progress Management API Docs',
-      swaggerOptions: {
-        persistAuthorization: true,
-      },
-    })
-  );
+  try {
+    const swaggerSpec = swaggerJsDoc(swaggerOptions);
 
-  // Serve swagger spec as JSON
-  app.get('/api-docs.json', (req: Request, res: Response) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.send(swaggerSpec);
-  });
+    // Swagger UI page
+    app.use(
+      '/api-docs',
+      swaggerUi.serve,
+      swaggerUi.setup(swaggerSpec, {
+        customSiteTitle: 'Progress Management API Docs',
+        swaggerOptions: {
+          persistAuthorization: true,
+        },
+      })
+    );
+
+    // Serve swagger spec as JSON
+    app.get('/api-docs.json', (req: Request, res: Response) => {
+      res.setHeader('Content-Type', 'application/json');
+      res.send(swaggerSpec);
+    });
+  } catch (error) {
+    console.warn('[Swagger] Failed to load Swagger spec on serverless environment:', error);
+  }
 };
 
 export default setupSwagger;
