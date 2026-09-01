@@ -35,7 +35,7 @@ export class BoardController {
         res,
         statusCode: 200,
         message: 'Boards fetched successfully',
-        data: result.boards,
+        data: result,
         meta: result.pagination,
       });
     } catch (error) {

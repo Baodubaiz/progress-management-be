@@ -35,7 +35,7 @@ export class ProjectController {
         res,
         statusCode: 200,
         message: 'Projects fetched successfully',
-        data: result.projects,
+        data: result,
         meta: result.pagination,
       });
     } catch (error) {
