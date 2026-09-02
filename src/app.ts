@@ -6,7 +6,6 @@ import morgan from 'morgan';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import rootRouter from './routes';
-import setupSwagger from './config/swagger';
 
 dotenv.config();
 
@@ -39,9 +38,6 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
-
-// Swagger UI Documentation
-setupSwagger(app);
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
