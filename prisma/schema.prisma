@@ -29,10 +29,21 @@ enum TaskPriority {
 enum ActivityAction {
   TASK_CREATED
   TASK_UPDATED
+  TASK_DELETED
   TASK_MOVED
   TASK_ASSIGNED
   TASK_UNASSIGNED
   COMMENT_ADDED
+  COMMENT_UPDATED
+  COMMENT_DELETED
+  BOARD_CREATED
+  BOARD_UPDATED
+  BOARD_DELETED
+  COLUMN_CREATED
+  COLUMN_UPDATED
+  COLUMN_MOVED
+  COLUMN_DELETED
+  LABEL_CREATED
   MEMBER_ADDED
   MEMBER_REMOVED
 
@@ -251,14 +262,15 @@ model Comment {
 
 // 12. Activities
 model Activity {
-  id        BigInt         @id @default(autoincrement())
-  projectId BigInt         @map("project_id")
-  taskId    BigInt?        @map("task_id")
-  userId    BigInt         @map("user_id")
-  action    ActivityAction
-  oldValue  String?        @map("old_value") @db.Text
-  newValue  String?        @map("new_value") @db.Text
-  createdAt DateTime       @default(now()) @map("created_at")
+  id          BigInt         @id @default(autoincrement())
+  projectId   BigInt         @map("project_id")
+  taskId      BigInt?        @map("task_id")
+  userId      BigInt         @map("user_id")
+  action      ActivityAction
+  description String?        @map("description") @db.Text
+  oldValue    String?        @map("old_value") @db.Text
+  newValue    String?        @map("new_value") @db.Text
+  createdAt   DateTime       @default(now()) @map("created_at")
 
   // Relations
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)

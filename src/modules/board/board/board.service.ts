@@ -72,7 +72,17 @@ export class BoardService {
         });
       }
 
-      // 3. Re-fetch board with created columns
+      // 3. Log activity
+      await tx.activity.create({
+        data: {
+          projectId: projectBigInt,
+          userId: userBigInt,
+          action: 'BOARD_CREATED',
+          description: `Tạo board "${newBoard.name}"`,
+        },
+      });
+
+      // 4. Re-fetch board with created columns
       return tx.board.findUnique({
         where: { id: newBoard.id },
         include: {
@@ -288,22 +298,35 @@ export class BoardService {
       throw new AppError('Access denied. You are not a member of this project.', 403);
     }
 
-    const updated = await prisma.board.update({
-      where: { id: boardBigInt },
-      data: {
-        ...(data.name !== undefined && { name: data.name }),
-        ...(data.description !== undefined && { description: data.description }),
-      },
-      include: {
-        creator: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            avatarUrl: true,
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedBoard = await tx.board.update({
+        where: { id: boardBigInt },
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.description !== undefined && { description: data.description }),
+        },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              username: true,
+              email: true,
+              avatarUrl: true,
+            },
           },
         },
-      },
+      });
+
+      await tx.activity.create({
+        data: {
+          projectId: board.projectId,
+          userId: userBigInt,
+          action: 'BOARD_UPDATED',
+          description: `Cập nhật board "${updatedBoard.name}"`,
+        },
+      });
+
+      return updatedBoard;
     });
 
     return updated;
@@ -318,7 +341,7 @@ export class BoardService {
 
     const board = await prisma.board.findUnique({
       where: { id: boardBigInt },
-      select: { id: true, projectId: true, createdBy: true },
+      select: { id: true, projectId: true, createdBy: true, name: true },
     });
 
     if (!board) {
@@ -335,8 +358,19 @@ export class BoardService {
       throw new AppError('Only project owners or the board creator can delete this board', 403);
     }
 
-    await prisma.board.delete({
-      where: { id: boardBigInt },
+    await prisma.$transaction(async (tx) => {
+      await tx.activity.create({
+        data: {
+          projectId: board.projectId,
+          userId: userBigInt,
+          action: 'BOARD_DELETED',
+          description: `Xóa board "${board.name}"`,
+        },
+      });
+
+      await tx.board.delete({
+        where: { id: boardBigInt },
+      });
     });
 
     return { message: 'Board deleted successfully' };

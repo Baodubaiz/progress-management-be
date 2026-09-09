@@ -215,6 +215,7 @@ export class TaskService {
           taskId: task.id,
           userId: userBigInt,
           action: 'TASK_CREATED',
+          description: `Tạo task "${task.title}"`,
           newValue: JSON.stringify({
             title: task.title,
             priority: task.priority,
@@ -464,6 +465,7 @@ export class TaskService {
 
     // Validate assignees if provided
     let assigneeBigInts: bigint[] | undefined = undefined;
+    let assigneeUsernames: string[] | undefined = undefined;
     if (data.assigneeIds !== undefined) {
       assigneeBigInts = data.assigneeIds.map((id) => BigInt(id));
       if (assigneeBigInts.length > 0) {
@@ -481,11 +483,30 @@ export class TaskService {
             400
           );
         }
+
+        const assigneeUsers = await prisma.user.findMany({
+          where: {
+            id: { in: assigneeBigInts },
+          },
+          select: {
+            id: true,
+            username: true,
+          },
+        });
+
+        const usernameMap = new Map(
+          assigneeUsers.map((user) => [user.id.toString(), user.username])
+        );
+
+        assigneeUsernames = assigneeBigInts.map((id) =>
+          usernameMap.get(id.toString()) || `user-${id.toString()}`
+        );
       }
     }
 
     // Validate labels if provided
     let labelBigInts: bigint[] | undefined = undefined;
+    let labelNames: string[] | undefined = undefined;
     if (data.labelIds !== undefined) {
       labelBigInts = data.labelIds.map((id) => BigInt(id));
       if (labelBigInts.length > 0) {
@@ -494,7 +515,7 @@ export class TaskService {
             projectId,
             id: { in: labelBigInts },
           },
-          select: { id: true },
+          select: { id: true, name: true },
         });
 
         if (validLabels.length !== labelBigInts.length) {
@@ -503,6 +524,14 @@ export class TaskService {
             400
           );
         }
+
+        const labelNameMap = new Map(
+          validLabels.map((label) => [label.id.toString(), label.name])
+        );
+
+        labelNames = labelBigInts.map((id) =>
+          labelNameMap.get(id.toString()) || `label-${id.toString()}`
+        );
       }
     }
 
@@ -520,6 +549,19 @@ export class TaskService {
           version: { increment: 1 },
         },
       });
+
+      const updatedFieldDetails = [
+        data.title !== undefined && `tiêu đề: "${updated.title ?? 'trống'}"`,
+        data.description !== undefined &&
+          `mô tả: "${updated.description ?? 'trống'}"`,
+        data.priority !== undefined && `mức độ ưu tiên: ${updated.priority}`,
+        data.dueDate !== undefined &&
+          `hạn hoàn thành: ${updated.dueDate ? new Date(updated.dueDate).toLocaleDateString('vi-VN') : 'trống'}`,
+        data.assigneeIds !== undefined &&
+          `người thực hiện: ${assigneeUsernames && assigneeUsernames.length > 0 ? assigneeUsernames.join(', ') : 'trống'}`,
+        data.labelIds !== undefined &&
+          `nhãn: ${labelNames && labelNames.length > 0 ? labelNames.join(', ') : 'trống'}`,
+      ].filter(Boolean) as string[];
 
       // 2. Sync assignees if provided
       if (assigneeBigInts !== undefined) {
@@ -554,19 +596,27 @@ export class TaskService {
       }
 
       // 4. Log activity
+      const fieldSummary =
+        updatedFieldDetails.length > 0
+          ? updatedFieldDetails.join('; ')
+          : 'các thông tin';
+
       await tx.activity.create({
         data: {
           projectId,
           taskId: taskBigInt,
           userId: userBigInt,
           action: 'TASK_UPDATED',
+          description: fieldSummary,
           oldValue: JSON.stringify({
             title: task.title,
+            description: task.description,
             priority: task.priority,
             dueDate: task.dueDate,
           }),
           newValue: JSON.stringify({
             title: updated.title,
+            description: updated.description,
             priority: updated.priority,
             dueDate: updated.dueDate,
           }),
@@ -619,6 +669,8 @@ export class TaskService {
     const { task, projectId } = await this.getTaskWithAccess(taskBigInt, userBigInt);
 
     let targetColumnId = task.columnId;
+    let targetColumnName = task.column?.name || 'Cột hiện tại';
+
     if (data.columnId) {
       const colBigInt = BigInt(data.columnId);
       const targetColumn = await this.getColumnWithAccess(colBigInt, userBigInt);
@@ -627,6 +679,7 @@ export class TaskService {
         throw new AppError('Cannot move task across different projects', 400);
       }
       targetColumnId = colBigInt;
+      targetColumnName = targetColumn.column.name;
     }
 
     let newPosition: Prisma.Decimal;
@@ -683,12 +736,15 @@ export class TaskService {
           taskId: taskBigInt,
           userId: userBigInt,
           action: 'TASK_MOVED',
+          description: `Di chuyển task "${task.title}" từ ${task.column?.name || 'cột cũ'} tới ${targetColumnName}`,
           oldValue: JSON.stringify({
             columnId: task.columnId.toString(),
+            columnName: task.column?.name || 'Cột cũ',
             position: task.position.toString(),
           }),
           newValue: JSON.stringify({
             columnId: targetColumnId.toString(),
+            columnName: targetColumnName,
             position: newPosition.toString(),
           }),
         },
@@ -707,15 +763,31 @@ export class TaskService {
     const userBigInt = BigInt(userId);
     const taskBigInt = BigInt(taskId);
 
-    const { task, memberRole } = await this.getTaskWithAccess(taskBigInt, userBigInt);
+    const { task, projectId, memberRole } = await this.getTaskWithAccess(taskBigInt, userBigInt);
 
     // Only project OWNER or task creator can delete
     if (memberRole !== 'OWNER' && task.createdBy !== userBigInt) {
       throw new AppError('Only project owners or the task creator can delete this task', 403);
     }
 
-    await prisma.task.delete({
-      where: { id: taskBigInt },
+    await prisma.$transaction(async (tx) => {
+      await tx.activity.create({
+        data: {
+          projectId,
+          taskId: taskBigInt,
+          userId: userBigInt,
+          action: 'TASK_DELETED',
+          description: `Xóa task "${task.title}"`,
+          oldValue: JSON.stringify({
+            title: task.title,
+            columnId: task.columnId.toString(),
+          }),
+        },
+      });
+
+      await tx.task.delete({
+        where: { id: taskBigInt },
+      });
     });
 
     return { message: 'Task deleted successfully' };
@@ -763,7 +835,7 @@ export class TaskService {
     const requesterBigInt = BigInt(requesterId);
     const taskBigInt = BigInt(taskId);
 
-    const { projectId } = await this.getTaskWithAccess(taskBigInt, requesterBigInt);
+    const { projectId, task } = await this.getTaskWithAccess(taskBigInt, requesterBigInt);
 
     const targetUserIds = data.userIds
       ? data.userIds.map((id) => BigInt(id))
@@ -830,6 +902,7 @@ export class TaskService {
             taskId: taskBigInt,
             userId: requesterBigInt,
             action: 'TASK_ASSIGNED',
+            description: `Giao task "${task.title}" cho ${member.user.username}`,
             newValue: JSON.stringify({
               userId: member.userId.toString(),
               username: member.user.username,
@@ -869,7 +942,7 @@ export class TaskService {
     const taskBigInt = BigInt(taskId);
     const targetUserBigInt = BigInt(targetUserId);
 
-    const { projectId } = await this.getTaskWithAccess(taskBigInt, requesterBigInt);
+    const { projectId, task } = await this.getTaskWithAccess(taskBigInt, requesterBigInt);
 
     const existingAssignee = await prisma.taskAssignee.findUnique({
       where: {
@@ -901,6 +974,7 @@ export class TaskService {
           taskId: taskBigInt,
           userId: requesterBigInt,
           action: 'TASK_UNASSIGNED',
+          description: `Bỏ giao task "${task.title}" cho thành viên ${targetUserBigInt.toString()}`,
           oldValue: JSON.stringify({
             userId: targetUserBigInt.toString(),
           }),

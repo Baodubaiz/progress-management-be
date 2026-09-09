@@ -99,7 +99,7 @@ export class CommentService {
     const userBigInt = BigInt(userId);
     const taskBigInt = BigInt(data.taskId);
 
-    const { projectId } = await this.getTaskWithAccess(taskBigInt, userBigInt);
+    const { projectId, task } = await this.getTaskWithAccess(taskBigInt, userBigInt);
 
     const newComment = await prisma.$transaction(async (tx) => {
       const comment = await tx.comment.create({
@@ -127,6 +127,7 @@ export class CommentService {
           taskId: taskBigInt,
           userId: userBigInt,
           action: 'COMMENT_ADDED',
+          description: `Thêm bình luận cho task "${task.title}"`,
           newValue: JSON.stringify({
             commentId: comment.id.toString(),
             preview: data.content.substring(0, 100),
@@ -223,21 +224,35 @@ export class CommentService {
       throw new AppError('Only the author can edit this comment', 403);
     }
 
-    const updated = await prisma.comment.update({
-      where: { id: commentBigInt },
-      data: {
-        content: data.content,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            avatarUrl: true,
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedComment = await tx.comment.update({
+        where: { id: commentBigInt },
+        data: {
+          content: data.content,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true,
+              avatarUrl: true,
+            },
           },
         },
-      },
+      });
+
+      await tx.activity.create({
+        data: {
+          projectId: comment.task.column.board.projectId,
+          taskId: comment.taskId,
+          userId: userBigInt,
+          action: 'COMMENT_UPDATED',
+          description: `Cập nhật bình luận cho task "${comment.task.title}"`,
+        },
+      });
+
+      return updatedComment;
     });
 
     return updated;
@@ -256,8 +271,20 @@ export class CommentService {
       throw new AppError('Only the author or the project owner can delete this comment', 403);
     }
 
-    await prisma.comment.delete({
-      where: { id: commentBigInt },
+    await prisma.$transaction(async (tx) => {
+      await tx.activity.create({
+        data: {
+          projectId: comment.task.column.board.projectId,
+          taskId: comment.taskId,
+          userId: userBigInt,
+          action: 'COMMENT_DELETED',
+          description: `Xóa bình luận trong task "${comment.task.title}"`,
+        },
+      });
+
+      await tx.comment.delete({
+        where: { id: commentBigInt },
+      });
     });
 
     return { message: 'Comment deleted successfully' };

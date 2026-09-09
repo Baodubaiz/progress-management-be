@@ -123,12 +123,25 @@ export class ColumnService {
       }
     }
 
-    const column = await prisma.column.create({
-      data: {
-        boardId: boardBigInt,
-        name: data.name,
-        position,
-      },
+    const column = await prisma.$transaction(async (tx) => {
+      const createdColumn = await tx.column.create({
+        data: {
+          boardId: boardBigInt,
+          name: data.name,
+          position,
+        },
+      });
+
+      await tx.activity.create({
+        data: {
+          projectId: (await this.getBoardWithAccess(boardBigInt, userBigInt)).board.projectId,
+          userId: userBigInt,
+          action: 'COLUMN_CREATED',
+          description: `Tạo cột "${createdColumn.name}"`,
+        },
+      });
+
+      return createdColumn;
     });
 
     return column;
@@ -218,16 +231,29 @@ export class ColumnService {
     const userBigInt = BigInt(userId);
     const columnBigInt = BigInt(columnId);
 
-    await this.getColumnWithAccess(columnBigInt, userBigInt);
+    const { column, memberRole } = await this.getColumnWithAccess(columnBigInt, userBigInt);
 
-    const updated = await prisma.column.update({
-      where: { id: columnBigInt },
-      data: {
-        ...(data.name !== undefined && { name: data.name }),
-        ...(data.position !== undefined && {
-          position: new Prisma.Decimal(data.position.toString()),
-        }),
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedColumn = await tx.column.update({
+        where: { id: columnBigInt },
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.position !== undefined && {
+            position: new Prisma.Decimal(data.position.toString()),
+          }),
+        },
+      });
+
+      await tx.activity.create({
+        data: {
+          projectId: column.board.projectId,
+          userId: userBigInt,
+          action: 'COLUMN_UPDATED',
+          description: `Cập nhật cột "${updatedColumn.name}"`,
+        },
+      });
+
+      return updatedColumn;
     });
 
     return updated;
@@ -240,7 +266,7 @@ export class ColumnService {
     const userBigInt = BigInt(userId);
     const columnBigInt = BigInt(columnId);
 
-    await this.getColumnWithAccess(columnBigInt, userBigInt);
+    const { column } = await this.getColumnWithAccess(columnBigInt, userBigInt);
 
     let newPosition: Prisma.Decimal;
 
@@ -250,11 +276,24 @@ export class ColumnService {
       newPosition = this.calculatePosition(data.prevPosition, data.nextPosition);
     }
 
-    const updated = await prisma.column.update({
-      where: { id: columnBigInt },
-      data: {
-        position: newPosition,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedColumn = await tx.column.update({
+        where: { id: columnBigInt },
+        data: {
+          position: newPosition,
+        },
+      });
+
+      await tx.activity.create({
+        data: {
+          projectId: column.board.projectId,
+          userId: userBigInt,
+          action: 'COLUMN_MOVED',
+          description: `Di chuyển cột "${column.name}"`,
+        },
+      });
+
+      return updatedColumn;
     });
 
     return updated;
@@ -267,10 +306,21 @@ export class ColumnService {
     const userBigInt = BigInt(userId);
     const columnBigInt = BigInt(columnId);
 
-    await this.getColumnWithAccess(columnBigInt, userBigInt);
+    const { column } = await this.getColumnWithAccess(columnBigInt, userBigInt);
 
-    await prisma.column.delete({
-      where: { id: columnBigInt },
+    await prisma.$transaction(async (tx) => {
+      await tx.activity.create({
+        data: {
+          projectId: column.board.projectId,
+          userId: userBigInt,
+          action: 'COLUMN_DELETED',
+          description: `Xóa cột "${column.name}"`,
+        },
+      });
+
+      await tx.column.delete({
+        where: { id: columnBigInt },
+      });
     });
 
     return { message: 'Column deleted successfully' };

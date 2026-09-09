@@ -69,12 +69,25 @@ export class LabelService {
       throw new AppError(`Label with name "${data.name}" already exists in this project`, 409);
     }
 
-    const label = await prisma.label.create({
-      data: {
-        projectId: projectBigInt,
-        name: data.name,
-        color: data.color,
-      },
+    const label = await prisma.$transaction(async (tx) => {
+      const createdLabel = await tx.label.create({
+        data: {
+          projectId: projectBigInt,
+          name: data.name,
+          color: data.color,
+        },
+      });
+
+      await tx.activity.create({
+        data: {
+          projectId: projectBigInt,
+          userId: userBigInt,
+          action: 'LABEL_CREATED',
+          description: `Tạo nhãn "${createdLabel.name}"`,
+        },
+      });
+
+      return createdLabel;
     });
 
     return label;
@@ -181,12 +194,25 @@ export class LabelService {
       }
     }
 
-    const updated = await prisma.label.update({
-      where: { id: labelBigInt },
-      data: {
-        ...(data.name !== undefined && { name: data.name }),
-        ...(data.color !== undefined && { color: data.color }),
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedLabel = await tx.label.update({
+        where: { id: labelBigInt },
+        data: {
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.color !== undefined && { color: data.color }),
+        },
+      });
+
+      await tx.activity.create({
+        data: {
+          projectId: label.projectId,
+          userId: userBigInt,
+          action: 'LABEL_CREATED',
+          description: `Cập nhật nhãn "${updatedLabel.name}"`,
+        },
+      });
+
+      return updatedLabel;
     });
 
     return updated;
@@ -199,10 +225,21 @@ export class LabelService {
     const userBigInt = BigInt(userId);
     const labelBigInt = BigInt(labelId);
 
-    await this.getLabelWithAccess(labelBigInt, userBigInt);
+    const { label } = await this.getLabelWithAccess(labelBigInt, userBigInt);
 
-    await prisma.label.delete({
-      where: { id: labelBigInt },
+    await prisma.$transaction(async (tx) => {
+      await tx.activity.create({
+        data: {
+          projectId: label.projectId,
+          userId: userBigInt,
+          action: 'LABEL_CREATED',
+          description: `Xóa nhãn "${label.name}"`,
+        },
+      });
+
+      await tx.label.delete({
+        where: { id: labelBigInt },
+      });
     });
 
     return { message: 'Label deleted successfully' };

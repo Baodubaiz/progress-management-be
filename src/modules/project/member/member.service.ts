@@ -114,6 +114,7 @@ export class MemberService {
           projectId: projectBigInt,
           userId: requesterBigInt,
           action: 'MEMBER_ADDED',
+          description: `Thêm thành viên ${targetUser.username} vào dự án`,
           newValue: JSON.stringify({
             userId: targetUser.id.toString(),
             username: targetUser.username,
@@ -232,6 +233,16 @@ export class MemberService {
           userId: targetUserBigInt,
         },
       },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
     });
 
     if (!targetMember) {
@@ -286,6 +297,7 @@ export class MemberService {
           projectId: projectBigInt,
           userId: requesterBigInt,
           action: 'MEMBER_REMOVED',
+          description: `Xóa thành viên ${targetMember.user?.username ?? targetUserBigInt.toString()} khỏi dự án`,
           oldValue: JSON.stringify({
             userId: targetUserBigInt.toString(),
             role: targetMember.role,
