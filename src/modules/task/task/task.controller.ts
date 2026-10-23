@@ -1,8 +1,38 @@
 import { Request, Response, NextFunction } from 'express';
 import { taskService } from './task.service';
+import { taskSearchService } from './task-search.service';
 import { sendResponse } from '../../../utils/api-response';
 
 export class TaskController {
+  /**
+   * Search tasks via Elasticsearch (Fuzzy & Global Search)
+   * GET /api/v1/tasks/search
+   */
+  async search(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { q, boardId, projectId, columnId, priority, page, limit } = req.query;
+      const result = await taskSearchService.searchTasks({
+        userId: req.user!.id,
+        q: q ? String(q) : undefined,
+        boardId: boardId ? String(boardId) : undefined,
+        projectId: projectId ? String(projectId) : undefined,
+        columnId: columnId ? String(columnId) : undefined,
+        priority: priority ? String(priority) : undefined,
+        page: page ? parseInt(String(page), 10) : 1,
+        limit: limit ? parseInt(String(limit), 10) : 20,
+      });
+
+      sendResponse({
+        res,
+        statusCode: 200,
+        message: 'Tasks searched successfully',
+        data: result.tasks,
+        meta: result.pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
   /**
    * Create new task
    * POST /api/v1/tasks

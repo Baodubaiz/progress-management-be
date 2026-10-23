@@ -9,6 +9,7 @@ import {
   AddLabelsInput,
   GetTasksQueryInput,
 } from './task.validation';
+import { taskSearchService } from './task-search.service';
 
 const POSITION_GAP = 65535;
 
@@ -256,6 +257,10 @@ export class TaskService {
         },
       });
     });
+
+    if (newTask) {
+      taskSearchService.indexTask(newTask.id);
+    }
 
     return newTask;
   }
@@ -656,6 +661,10 @@ export class TaskService {
       });
     });
 
+    if (updatedTask) {
+      taskSearchService.indexTask(taskBigInt);
+    }
+
     return updatedTask;
   }
 
@@ -753,6 +762,10 @@ export class TaskService {
       return moved;
     });
 
+    if (updatedTask) {
+      taskSearchService.indexTask(taskBigInt);
+    }
+
     return updatedTask;
   }
 
@@ -789,6 +802,8 @@ export class TaskService {
         where: { id: taskBigInt },
       });
     });
+
+    taskSearchService.deleteIndexedTask(taskBigInt);
 
     return { message: 'Task deleted successfully' };
   }
@@ -927,6 +942,8 @@ export class TaskService {
       });
     });
 
+    taskSearchService.indexTask(taskBigInt);
+
     return result;
   }
 
@@ -981,6 +998,8 @@ export class TaskService {
         },
       });
     });
+
+    taskSearchService.indexTask(taskBigInt);
 
     return { message: 'Assignee removed successfully from the task' };
   }
@@ -1078,6 +1097,8 @@ export class TaskService {
       });
     });
 
+    taskSearchService.indexTask(taskBigInt);
+
     return result.map((tl) => tl.label);
   }
 
@@ -1116,6 +1137,8 @@ export class TaskService {
         },
       },
     });
+
+    taskSearchService.indexTask(taskBigInt);
 
     return { message: 'Label removed successfully from the task' };
   }

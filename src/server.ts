@@ -1,5 +1,7 @@
 import app from './app';
 import prisma from './config/prisma';
+import { checkElasticsearchConnection } from './config/elasticsearch';
+import { taskSearchService } from './modules/task/task/task-search.service';
 
 const PORT = process.env.PORT || 3000;
 
@@ -8,6 +10,12 @@ async function startServer() {
     // Test database connection
     await prisma.$connect();
     console.log('✅ Connected to Neon PostgreSQL Database successfully.');
+
+    // Test Elasticsearch connection & initialize index
+    const isEsConnected = await checkElasticsearchConnection();
+    if (isEsConnected) {
+      await taskSearchService.initTasksIndex();
+    }
 
     app.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);

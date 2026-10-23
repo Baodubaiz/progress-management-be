@@ -145,6 +145,57 @@ router.get(
 
 /**
  * @openapi
+ * /tasks/search:
+ *   get:
+ *     tags:
+ *       - Tasks
+ *     summary: Search tasks using Elasticsearch
+ *     description: Full-text and fuzzy search across task title, description, labels, and assignees.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Search query keyword
+ *       - in: query
+ *         name: boardId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: projectId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: columnId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: priority
+ *         schema:
+ *           type: string
+ *           enum: [LOW, MEDIUM, HIGH, URGENT]
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Search results returned successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/search', taskController.search);
+
+/**
+ * @openapi
  * /tasks/{id}:
  *   get:
  *     tags:
